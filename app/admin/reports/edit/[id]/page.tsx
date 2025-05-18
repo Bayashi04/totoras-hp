@@ -382,6 +382,8 @@ export default function EditReportPage({ params }: { params: { id: string } }) {
       }
 
   const [formData, setFormData] = useState<EventReport>(initialReportData)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   const [activeTab, setActiveTab] = useState("content")
@@ -449,43 +451,52 @@ export default function EditReportPage({ params }: { params: { id: string } }) {
   }, [formData, isAutoSaveEnabled, isUnsavedChanges])
 
   // 自動保存機能
-  const autoSave = () => {
-    if (!formData.title.trim()) return // タイトルが空の場合は保存しない
+  const autoSave = async () => {
+    if (!formData.title.trim() || !formData.id) return // タイトルが空または新規作成中は保存しない
 
-    const draftData = {
-      ...formData,
-      id: formData.id || `report-${Date.now()}`,
-      lastUpdated: Date.now(),
-    }
-
-    // ローカルストレージに保存
-    const savedReports = localStorage.getItem("eventReports")
-    let reports = []
-
-    if (savedReports) {
-      try {
-        reports = JSON.parse(savedReports)
-        const existingReportIndex = reports.findIndex((report: EventReport) => report.id === draftData.id)
-
-        if (existingReportIndex >= 0) {
-          reports[existingReportIndex] = draftData
-        } else {
-          reports.push(draftData)
-        }
-      } catch (e) {
-        console.error("レポートデータの読み込みに失敗しました", e)
-        reports = [draftData]
+    try {
+      // API送信用のデータを準備
+      const draftData = {
+        title: formData.title,
+        content: formData.content,
+        excerpt: formData.excerpt || formData.title,
+        coverImage: formData.coverImage !== "/placeholder.svg" ? formData.coverImage : "",
+        category: formData.category,
+        published: formData.published,
+        scheduledPublishDate: formData.scheduledPublishDate,
+        eventId: formData.eventId,
+        eventTitle: formData.eventTitle,
+        authorName: formData.authorName || "管理者",
+        images: formData.images,
+        tags: formData.tags,
+        seoDescription: formData.seoDescription,
+        seoKeywords: formData.seoKeywords,
+        allowComments: formData.allowComments,
+        featuredReport: formData.featuredReport,
       }
-    } else {
-      reports = [draftData]
-    }
 
-    localStorage.setItem("eventReports", JSON.stringify(reports))
-    toast({
-      title: "自動保存しました",
-      description: new Date().toLocaleTimeString(),
-      duration: 3000,
-    })
+      // 更新
+      const response = await fetch(`/api/reports/${formData.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(draftData),
+      })
+
+      if (!response.ok) {
+        throw new Error("APIリクエストが失敗しました")
+      }
+
+      toast({
+        title: "自動保存しました",
+        description: new Date().toLocaleTimeString(),
+        duration: 3000,
+      })
+    } catch (error) {
+      console.error("自動保存エラー:", error)
+      // 自動保存のエラーは静かに処理
+    }
   }
 
   // カンマ区切りでタグを一括追加する機能を追加
@@ -555,34 +566,55 @@ export default function EditReportPage({ params }: { params: { id: string } }) {
   // ローカルストレージからレポートデータを読み込む
   useEffect(() => {
     if (!isNewMode) {
-      const loadReport = () => {
-        const savedReports = localStorage.getItem("eventReports")
-        if (savedReports) {
-          try {
-            const parsedReports = JSON.parse(savedReports) as EventReport[]
-            const report = parsedReports.find((r) => r.id === reportId)
-            if (report) {
-              setFormData(report)
-            } else {
-              // サンプルデータから検索
-              const sampleReport = sampleReports.find((r) => r.id === reportId)
-              if (sampleReport) {
-                setFormData(sampleReport)
-              }
-            }
-          } catch (e) {
-            console.error("レポートデータの読み込みに失敗しました", e)
+      const fetchReportData = async () => {
+        setIsLoading(true)
+        setError(null)
+        try {
+          const response = await fetch(`/api/reports/${reportId}`)
+          if (!response.ok) {
+            throw new Error("レポートの取得に失敗しました")
           }
-        } else {
-          // サンプルデータから検索
+          const reportData = await response.json()
+
+          // APIから取得したデータをフォーマット
+          setFormData({
+            id: reportData.id,
+            title: reportData.title,
+            date: new Date(reportData.createdAt).toISOString().split("T")[0],
+            eventId: reportData.eventId || "",
+            eventTitle: reportData.eventTitle || "",
+            excerpt: reportData.excerpt,
+            content: reportData.content,
+            coverImage: reportData.coverImage || "/placeholder.svg",
+            images: reportData.images || [],
+            published: reportData.published,
+            lastUpdated: new Date(reportData.updatedAt).getTime(),
+            category: reportData.category,
+            tags: reportData.tags || [],
+            authorName: reportData.authorName || "",
+            seoDescription: reportData.seoDescription || "",
+            seoKeywords: reportData.seoKeywords || [],
+            allowComments: reportData.allowComments !== false,
+            featuredReport: reportData.featuredReport || false,
+            scheduledPublishDate: reportData.publishDate
+              ? new Date(reportData.publishDate).toISOString().slice(0, 16)
+              : undefined,
+          })
+        } catch (err) {
+          console.error("レポートデータの取得エラー:", err)
+          setError("レポートデータの取得に失敗しました")
+
+          // エラー時にはサンプルデータを使用
           const sampleReport = sampleReports.find((r) => r.id === reportId)
           if (sampleReport) {
             setFormData(sampleReport)
           }
+        } finally {
+          setIsLoading(false)
         }
       }
 
-      loadReport()
+      fetchReportData()
     }
   }, [reportId, isNewMode])
 
@@ -782,46 +814,87 @@ export default function EditReportPage({ params }: { params: { id: string } }) {
   }
 
   // 下書き保存
-  const saveDraft = () => {
-    // IDが空の場合は新しいIDを生成
-    const draftData = {
-      ...formData,
-      id: formData.id || `report-${Date.now()}`,
-      published: false,
-      lastUpdated: Date.now(),
+  const saveDraft = async () => {
+    if (!formData.title.trim()) {
+      toast({
+        title: "タイトルが必要です",
+        description: "下書き保存するにはタイトルを入力してください",
+        variant: "destructive",
+        duration: 3000,
+      })
+      return
     }
 
-    // ローカルストレージに保存
-    const savedReports = localStorage.getItem("eventReports")
-    let reports = []
-
-    if (savedReports) {
-      try {
-        reports = JSON.parse(savedReports)
-        const existingReportIndex = reports.findIndex((report: EventReport) => report.id === draftData.id)
-
-        if (existingReportIndex >= 0) {
-          reports[existingReportIndex] = draftData
-        } else {
-          reports.push(draftData)
-        }
-      } catch (e) {
-        console.error("レポートデータの読み込みに失敗しました", e)
-        reports = [draftData]
+    try {
+      // API送信用のデータを準備
+      const draftData = {
+        title: formData.title,
+        content: formData.content,
+        excerpt: formData.excerpt || formData.title,
+        coverImage: formData.coverImage !== "/placeholder.svg" ? formData.coverImage : "",
+        category: formData.category,
+        published: false, // 下書きは常に非公開
+        eventId: formData.eventId,
+        eventTitle: formData.eventTitle,
+        authorName: formData.authorName || "管理者",
+        images: formData.images,
+        tags: formData.tags,
+        seoDescription: formData.seoDescription,
+        seoKeywords: formData.seoKeywords,
+        allowComments: formData.allowComments,
+        featuredReport: formData.featuredReport,
       }
-    } else {
-      reports = [draftData]
+
+      let response
+
+      if (isNewMode) {
+        // 新規作成
+        response = await fetch("/api/reports", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(draftData),
+        })
+      } else {
+        // 更新
+        response = await fetch(`/api/reports/${reportId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(draftData),
+        })
+      }
+
+      if (!response.ok) {
+        throw new Error("APIリクエストが失敗しました")
+      }
+
+      const result = await response.json()
+
+      // 成功メッセージ
+      toast({
+        title: "下書きとして保存しました",
+        description: "レポートが下書きとして保存されました",
+        duration: 3000,
+      })
+
+      // 新規作成の場合は、IDを更新して編集モードに切り替え
+      if (isNewMode && result.id) {
+        router.replace(`/admin/reports/edit/${result.id}`)
+      }
+
+      setIsUnsavedChanges(false)
+    } catch (error) {
+      console.error("下書き保存エラー:", error)
+      toast({
+        title: "エラーが発生しました",
+        description: "下書きの保存に失敗しました。もう一度お試しください。",
+        variant: "destructive",
+        duration: 3000,
+      })
     }
-
-    localStorage.setItem("eventReports", JSON.stringify(reports))
-
-    // 成功メッセージ
-    toast({
-      title: "下書きとして保存しました",
-      description: "レポートが下書きとして保存されました",
-      duration: 3000,
-    })
-    setIsUnsavedChanges(false)
   }
 
   // フォームの検証
@@ -840,53 +913,80 @@ export default function EditReportPage({ params }: { params: { id: string } }) {
   }
 
   // フォームの送信
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (validateForm()) {
-      // IDが空の場合は新しいIDを生成
-      const submitData = {
-        ...formData,
-        id: formData.id || `report-${Date.now()}`,
-        lastUpdated: Date.now(),
-      }
-
-      // ローカルストレージに保存
-      const savedReports = localStorage.getItem("eventReports")
-      let reports = []
-
-      if (savedReports) {
-        try {
-          reports = JSON.parse(savedReports)
-          const existingReportIndex = reports.findIndex((report: EventReport) => report.id === submitData.id)
-
-          if (existingReportIndex >= 0) {
-            reports[existingReportIndex] = submitData
-          } else {
-            reports.push(submitData)
-          }
-        } catch (e) {
-          console.error("レポートデータの読み込みに失敗しました", e)
-          reports = [submitData]
+      try {
+        // API送信用のデータを準備
+        const submitData = {
+          title: formData.title,
+          content: formData.content,
+          excerpt: formData.excerpt,
+          coverImage: formData.coverImage !== "/placeholder.svg" ? formData.coverImage : "",
+          category: formData.category,
+          published: formData.published,
+          scheduledPublishDate: formData.scheduledPublishDate,
+          eventId: formData.eventId,
+          eventTitle: formData.eventTitle,
+          authorName: formData.authorName,
+          images: formData.images,
+          tags: formData.tags,
+          seoDescription: formData.seoDescription,
+          seoKeywords: formData.seoKeywords,
+          allowComments: formData.allowComments,
+          featuredReport: formData.featuredReport,
         }
-      } else {
-        reports = [submitData]
+
+        let response
+
+        if (isNewMode) {
+          // 新規作成
+          response = await fetch("/api/reports", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(submitData),
+          })
+        } else {
+          // 更新
+          response = await fetch(`/api/reports/${reportId}`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(submitData),
+          })
+        }
+
+        if (!response.ok) {
+          throw new Error("APIリクエストが失敗しました")
+        }
+
+        const result = await response.json()
+
+        // 成功したら一覧ページに戻る
+        toast({
+          title: isNewMode ? "レポートを作成しました" : "レポートを更新しました",
+          description: formData.scheduledPublishDate
+            ? `${new Date(formData.scheduledPublishDate).toLocaleString()}に公開されます`
+            : formData.published
+              ? "レポートが公開されました"
+              : "レポートが下書きとして保存されました",
+          duration: 3000,
+        })
+        setIsUnsavedChanges(false)
+        router.push("/admin/reports")
+      } catch (error) {
+        console.error("レポート保存エラー:", error)
+        toast({
+          title: "エラーが発生しました",
+          description: "レポートの保存に失敗しました。もう一度お試しください。",
+          variant: "destructive",
+          duration: 3000,
+        })
       }
-
-      localStorage.setItem("eventReports", JSON.stringify(reports))
-
-      // 成功したら一覧ページに戻る
-      toast({
-        title: isNewMode ? "レポートを作成しました" : "レポートを更新しました",
-        description: formData.scheduledPublishDate
-          ? `${new Date(formData.scheduledPublishDate).toLocaleString()}に公開されます`
-          : formData.published
-            ? "レポートが公開されました"
-            : "レポートが下書きとして保存されました",
-        duration: 3000,
-      })
-      setIsUnsavedChanges(false)
-      router.push("/admin/reports")
     } else {
       // エラーがある場合はトーストで通知
       toast({
@@ -896,6 +996,43 @@ export default function EditReportPage({ params }: { params: { id: string } }) {
         duration: 3000,
       })
     }
+  }
+
+  if (isLoading) {
+    return (
+      <main className="min-h-screen bg-white">
+        <Header />
+        <div className="container px-4 mx-auto py-8 md:py-12">
+          <div className="flex justify-center items-center h-[60vh]">
+            <div className="flex flex-col items-center">
+              <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent"></div>
+              <p className="mt-4 text-gray-600">レポートデータを読み込み中...</p>
+            </div>
+          </div>
+        </div>
+        <Footer />
+      </main>
+    )
+  }
+
+  if (error) {
+    return (
+      <main className="min-h-screen bg-white">
+        <Header />
+        <div className="container px-4 mx-auto py-8 md:py-12">
+          <div className="flex justify-center items-center h-[60vh]">
+            <div className="flex flex-col items-center">
+              <div className="text-red-500 text-xl mb-4">エラーが発生しました</div>
+              <p className="text-gray-600">{error}</p>
+              <Button className="mt-4" onClick={() => router.push("/admin/reports")}>
+                レポート一覧に戻る
+              </Button>
+            </div>
+          </div>
+        </div>
+        <Footer />
+      </main>
+    )
   }
 
   return (

@@ -1,0 +1,47 @@
+# データベースマイグレーションコマンド
+
+# 開発環境でのマイグレーション
+npx prisma migrate dev --name init
+
+# 本番環境でのマイグレーション
+npx prisma migrate deploy
+
+# データベーススキーマの確認
+npx prisma db pull
+
+# Prismaクライアントの生成
+npx prisma generate
+
+# 初期管理者ユーザーの作成スクリプト
+# scripts/create-admin.ts
+import { PrismaClient } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
+
+const prisma = new PrismaClient();
+
+async function main() {
+  const hashedPassword = await bcrypt.hash('admin123', 10);
+  
+  const admin = await prisma.adminUser.create({
+    data: {
+      username: 'admin',
+      password: hashedPassword,
+      email: 'admin@example.com',
+      role: 'admin',
+    },
+  });
+  
+  console.log('管理者ユーザーが作成されました:', admin);
+}
+
+main()
+  .catch(e => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
+
+# 実行方法
+# npx ts-node scripts/create-admin.ts

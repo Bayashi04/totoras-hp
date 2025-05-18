@@ -11,38 +11,45 @@ datasource db {
 }
 
 model Event {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   title       String
   date        DateTime
   location    String
-  description String   @db.Text
+  description String    @db.Text
   image       String?
-  category    String
-  price       String?
-  capacity    Int?
-  published   Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  category    String    @default("その他")
+  price       String
+  capacity    Int       @default(0)
+  published   Boolean   @default(false)
+  metadata    Json?     // 時間、注意事項、持ち物リスト、カラーなどを保存
+  reports     Report[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model Report {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   title       String
-  content     String   @db.Text
-  image       String?
-  category    String
-  published   Boolean  @default(false)
+  content     String    @db.Text
+  excerpt     String    @db.Text
+  coverImage  String?
+  category    String    @default("その他")
+  published   Boolean   @default(false)
   publishDate DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  eventId     String?
+  event       Event?    @relation(fields: [eventId], references: [id])
+  metadata    Json?     // 画像URLや配列をJSONとして保存
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model AdminUser {
   id        String   @id @default(cuid())
   username  String   @unique
   password  String
-  email     String   @unique
+  email     String?
   role      String   @default("editor")
+  lastLogin DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -51,15 +58,17 @@ model ActivityLog {
   id        String   @id @default(cuid())
   action    String
   userId    String?
-  details   String?  @db.Text
-  timestamp DateTime @default(now())
+  details   String
+  metadata  Json?
+  createdAt DateTime @default(now())
 }
 
-model PageView {
-  id        String   @id @default(cuid())
-  path      String
-  timestamp DateTime @default(now())
-  userAgent String?
-  referer   String?
-  ip        String?
+// 画像モデルが存在しない場合は追加
+model Image {
+  id          String   @id @default(cuid())
+  url         String
+  name        String
+  size        Int
+  contentType String?
+  uploadedAt  DateTime @default(now())
 }

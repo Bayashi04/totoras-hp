@@ -13,7 +13,21 @@ export async function GET(request: Request, { params }: { params: { id: string }
       return NextResponse.json({ error: "レポートが見つかりません" }, { status: 404 })
     }
 
-    return NextResponse.json(report)
+    // メタデータからフィールドを展開
+    const metadata = (report.metadata as any) || {}
+
+    return NextResponse.json({
+      ...report,
+      eventId: metadata.eventId || "",
+      eventTitle: metadata.eventTitle || "",
+      authorName: metadata.authorName || "",
+      images: metadata.images || [],
+      tags: metadata.tags || [],
+      seoDescription: metadata.seoDescription || "",
+      seoKeywords: metadata.seoKeywords || [],
+      allowComments: metadata.allowComments !== false,
+      featuredReport: metadata.featuredReport || false,
+    })
   } catch (error) {
     console.error("レポート取得エラー:", error)
     return NextResponse.json({ error: "レポートの取得に失敗しました" }, { status: 500 })
@@ -28,8 +42,8 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 
     // 公開日の処理
     let publishDate = undefined
-    if (data.published && data.publishDate) {
-      publishDate = new Date(data.publishDate)
+    if (data.published && data.scheduledPublishDate) {
+      publishDate = new Date(data.scheduledPublishDate)
     } else if (data.published && !data.hasOwnProperty("publishDate")) {
       // publishDateが提供されていない場合は現在の値を維持
       const currentReport = await prisma.report.findUnique({
@@ -39,15 +53,34 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       publishDate = currentReport?.publishDate || new Date()
     }
 
+    // タグの処理
+    const tags = Array.isArray(data.tags) ? data.tags : []
+
+    // SEOキーワードの処理
+    const seoKeywords = Array.isArray(data.seoKeywords) ? data.seoKeywords : []
+
     const updatedReport = await prisma.report.update({
       where: { id },
       data: {
         title: data.title,
         content: data.content || "",
-        image: data.image || "",
+        excerpt: data.excerpt || "",
+        coverImage: data.coverImage || "",
         category: data.category || "その他",
         published: data.published || false,
         ...(publishDate !== undefined && { publishDate }),
+        // JSONフィールドとして保存
+        metadata: {
+          eventId: data.eventId || "",
+          eventTitle: data.eventTitle || "",
+          authorName: data.authorName || "",
+          images: data.images || [],
+          tags: tags,
+          seoDescription: data.seoDescription || "",
+          seoKeywords: seoKeywords,
+          allowComments: data.allowComments !== false,
+          featuredReport: data.featuredReport || false,
+        },
       },
     })
 
@@ -60,7 +93,21 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       },
     })
 
-    return NextResponse.json(updatedReport)
+    // メタデータからフィールドを展開
+    const metadata = (updatedReport.metadata as any) || {}
+
+    return NextResponse.json({
+      ...updatedReport,
+      eventId: metadata.eventId || "",
+      eventTitle: metadata.eventTitle || "",
+      authorName: metadata.authorName || "",
+      images: metadata.images || [],
+      tags: metadata.tags || [],
+      seoDescription: metadata.seoDescription || "",
+      seoKeywords: metadata.seoKeywords || [],
+      allowComments: metadata.allowComments !== false,
+      featuredReport: metadata.featuredReport || false,
+    })
   } catch (error) {
     console.error("レポート更新エラー:", error)
     return NextResponse.json({ error: "レポートの更新に失敗しました" }, { status: 500 })
@@ -89,7 +136,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
     await prisma.activityLog.create({
       data: {
         action: "レポート削除",
-        userId: null, // リクエストからユーザーIDを取得する方法を実装する必要があります
+        userId: null,
         details: `レポート「${report.title}」を削除しました`,
       },
     })

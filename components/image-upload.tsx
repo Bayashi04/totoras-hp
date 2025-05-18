@@ -1,48 +1,114 @@
 "use client"
 
 import type React from "react"
-
-import { useState, useRef, useCallback } from "react"
+import { useState, useRef, useCallback, useEffect } from "react"
 import Image from "next/image"
-import { Upload, X, ImageIcon } from "lucide-react"
+import { Upload, X, ImageIcon, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { toast } from "@/components/ui/use-toast"
 
 interface ImageUploadProps {
   initialImage?: string
   onImageChange: (imageData: string) => void
   className?: string
+  maxSizeMB?: number
 }
 
-export function ImageUpload({ initialImage, onImageChange, className = "" }: ImageUploadProps) {
+export function ImageUpload({ initialImage, onImageChange, className = "", maxSizeMB = 5 }: ImageUploadProps) {
   const [image, setImage] = useState<string>(initialImage || "")
   const [isDragging, setIsDragging] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // 初期画像の設定
+  useEffect(() => {
+    if (initialImage) {
+      setImage(initialImage)
+    }
+  }, [initialImage])
+
+  // サーバーへのアップロード処理
+  const uploadToServer = async (file: File): Promise<string> => {
+    const formData = new FormData()
+    formData.append("file", file)
+
+    try {
+      // アップロードリクエスト
+      const response = await fetch("/api/images/upload", {
+        method: "POST",
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "画像のアップロードに失敗しました")
+      }
+
+      const data = await response.json()
+      return data.url
+    } catch (error) {
+      console.error("アップロードエラー:", error)
+      throw error
+    }
+  }
 
   // ファイルを処理する関数
   const processFile = useCallback(
-    (file: File) => {
+    async (file: File) => {
       if (!file.type.startsWith("image/")) {
-        alert("画像ファイルを選択してください")
+        toast({
+          title: "エラー",
+          description: "画像ファイルを選択してください",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // ファイルサイズチェック
+      if (file.size > maxSizeMB * 1024 * 1024) {
+        toast({
+          title: "ファイルサイズエラー",
+          description: `ファイルサイズが上限(${maxSizeMB}MB)を超えています`,
+          variant: "destructive",
+        })
         return
       }
 
       setIsLoading(true)
+      setUploadProgress(0)
 
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const imageData = e.target?.result as string
-        setImage(imageData)
-        onImageChange(imageData)
+      try {
+        // ローカルプレビュー用に読み込み
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          const imageData = e.target?.result as string
+          setImage(imageData)
+          setUploadProgress(50) // プレビュー生成完了
+        }
+        reader.readAsDataURL(file)
+
+        // サーバーにアップロード
+        const uploadedUrl = await uploadToServer(file)
+        onImageChange(uploadedUrl)
+        setUploadProgress(100)
+
+        toast({
+          title: "成功",
+          description: "画像がアップロードされました",
+        })
+      } catch (error) {
+        console.error("画像処理エラー:", error)
+        toast({
+          title: "エラー",
+          description: error instanceof Error ? error.message : "画像のアップロードに失敗しました",
+          variant: "destructive",
+        })
+      } finally {
         setIsLoading(false)
       }
-      reader.onerror = () => {
-        alert("画像の読み込みに失敗しました")
-        setIsLoading(false)
-      }
-      reader.readAsDataURL(file)
     },
-    [onImageChange],
+    [onImageChange, maxSizeMB],
   )
 
   // ファイル選択ハンドラー
@@ -115,7 +181,7 @@ export function ImageUpload({ initialImage, onImageChange, className = "" }: Ima
           <div className="flex flex-col items-center justify-center h-full py-6">
             <ImageIcon className="h-12 w-12 text-gray-400 mb-4" />
             <p className="text-sm text-gray-600 mb-2">画像をドラッグ&ドロップするか、クリックして選択してください</p>
-            <p className="text-xs text-gray-500">JPG, PNG, GIF (最大 5MB)</p>
+            <p className="text-xs text-gray-500">JPG, PNG, GIF, WEBP (最大 {maxSizeMB}MB)</p>
             <Button
               type="button"
               variant="outline"
@@ -148,6 +214,7 @@ export function ImageUpload({ initialImage, onImageChange, className = "" }: Ima
                 size="sm"
                 className="bg-white hover:bg-gray-100"
                 onClick={openFileDialog}
+                disabled={isLoading}
               >
                 変更
               </Button>
@@ -157,6 +224,7 @@ export function ImageUpload({ initialImage, onImageChange, className = "" }: Ima
                 size="sm"
                 className="bg-white hover:bg-red-50 text-red-500 hover:text-red-600"
                 onClick={handleRemoveImage}
+                disabled={isLoading}
               >
                 <X className="h-4 w-4 mr-1" />
                 削除
@@ -167,9 +235,19 @@ export function ImageUpload({ initialImage, onImageChange, className = "" }: Ima
       )}
 
       {isLoading && (
-        <div className="mt-2 text-center">
-          <div className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-solid border-current border-r-transparent motion-reduce:animate-[spin_1.5s_linear_infinite] mr-2"></div>
-          <span className="text-sm text-gray-500">画像を処理中...</span>
+        <div className="mt-2">
+          <div className="w-full bg-gray-200 rounded-full h-2.5">
+            <div
+              className="bg-[#4ecdc4] h-2.5 rounded-full transition-all duration-300"
+              style={{ width: `${uploadProgress}%` }}
+            ></div>
+          </div>
+          <div className="flex items-center justify-center mt-1">
+            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            <span className="text-sm text-gray-500">
+              {uploadProgress < 50 ? "画像を処理中..." : uploadProgress < 100 ? "サーバーにアップロード中..." : "完了"}
+            </span>
+          </div>
         </div>
       )}
     </div>

@@ -23,20 +23,39 @@ export async function POST(request: Request) {
 
     // 公開日の処理
     let publishDate = null
-    if (data.published && data.publishDate) {
-      publishDate = new Date(data.publishDate)
+    if (data.published && data.scheduledPublishDate) {
+      publishDate = new Date(data.scheduledPublishDate)
     } else if (data.published) {
       publishDate = new Date()
     }
+
+    // タグの処理
+    const tags = Array.isArray(data.tags) ? data.tags : []
+
+    // SEOキーワードの処理
+    const seoKeywords = Array.isArray(data.seoKeywords) ? data.seoKeywords : []
 
     const report = await prisma.report.create({
       data: {
         title: data.title,
         content: data.content || "",
-        image: data.image || "",
+        excerpt: data.excerpt || "",
+        coverImage: data.coverImage || "",
         category: data.category || "その他",
         published: data.published || false,
         publishDate: publishDate,
+        // JSONフィールドとして保存
+        metadata: {
+          eventId: data.eventId || "",
+          eventTitle: data.eventTitle || "",
+          authorName: data.authorName || "",
+          images: data.images || [],
+          tags: tags,
+          seoDescription: data.seoDescription || "",
+          seoKeywords: seoKeywords,
+          allowComments: data.allowComments !== false,
+          featuredReport: data.featuredReport || false,
+        },
       },
     })
 

@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { useRouter } from "next/navigation"
 import { Calendar, ChevronLeft, Edit, Trash2, Plus, Search, FileText, ImageIcon } from "lucide-react"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
@@ -24,6 +23,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { getCategoryColorClasses } from "@/lib/category-colors"
 import { getCategoryIcon } from "@/lib/category-icons"
+import { toast } from "@/components/ui/use-toast"
 
 // イベントリポートの型定義
 interface EventReport {
@@ -190,8 +190,9 @@ const sampleReports: EventReport[] = [
 ]
 
 export default function EventReportsPage() {
-  const router = useRouter()
   const [reports, setReports] = useState<EventReport[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [reportToDelete, setReportToDelete] = useState<string | null>(null)
 
@@ -200,28 +201,54 @@ export default function EventReportsPage() {
     window.scrollTo(0, 0)
   }, [])
 
-  // ローカルストレージからレポートデータを読み込む
+  // APIからレポートデータを取得
   useEffect(() => {
-    const loadReports = () => {
-      const savedReports = localStorage.getItem("eventReports")
-      if (savedReports) {
-        try {
-          const parsedReports = JSON.parse(savedReports) as EventReport[]
-          // 最新の更新順にソート
-          parsedReports.sort((a, b) => b.lastUpdated - a.lastUpdated)
-          setReports(parsedReports)
-        } catch (e) {
-          console.error("レポートデータの読み込みに失敗しました", e)
-          setReports(sampleReports)
+    const fetchReports = async () => {
+      setIsLoading(true)
+      try {
+        const response = await fetch("/api/reports")
+        if (!response.ok) {
+          throw new Error("レポートの取得に失敗しました")
         }
-      } else {
-        // サンプルデータを設定
+
+        const data = await response.json()
+
+        // APIレスポンスをフォーマット
+        const formattedReports = data.map((report: any) => {
+          const metadata = report.metadata || {}
+          return {
+            id: report.id,
+            title: report.title,
+            date: new Date(report.createdAt).toISOString().split("T")[0],
+            excerpt: report.excerpt,
+            content: report.content,
+            coverImage: report.coverImage || "/placeholder.svg",
+            published: report.published,
+            category: report.category,
+            lastUpdated: new Date(report.updatedAt).getTime(),
+            eventId: metadata.eventId || "",
+            eventTitle: metadata.eventTitle || "",
+            images: metadata.images || [],
+            tags: metadata.tags || [],
+            authorName: metadata.authorName || "",
+            scheduledPublishDate: report.publishDate ? new Date(report.publishDate).toISOString() : undefined,
+            featuredReport: metadata.featuredReport || false,
+          }
+        })
+
+        setReports(formattedReports)
+      } catch (err) {
+        console.error("レポート取得エラー:", err)
+        setError("レポートの取得に失敗しました")
+
+        // エラー時にはサンプルデータを使用
         setReports(sampleReports)
-        localStorage.setItem("eventReports", JSON.stringify(sampleReports))
+      } finally {
+        setIsLoading(false)
       }
     }
 
-    loadReports()
+    fetchReports()
   }, [])
 
   // レポート削除処理
@@ -230,6 +257,37 @@ export default function EventReportsPage() {
     setReports(updatedReports)
     localStorage.setItem("eventReports", JSON.stringify(updatedReports))
     setReportToDelete(null)
+  }
+
+  // 削除ハンドラーを修正
+  const handleDeleteReport = async (id: string) => {
+    if (confirm("このレポートを削除してもよろしいですか？")) {
+      try {
+        const response = await fetch(`/api/reports/${id}`, {
+          method: "DELETE",
+        })
+
+        if (!response.ok) {
+          throw new Error("レポートの削除に失敗しました")
+        }
+
+        // 成功したら一覧から削除
+        setReports(reports.filter((report) => report.id !== id))
+
+        toast({
+          title: "レポートを削除しました",
+          duration: 3000,
+        })
+      } catch (error) {
+        console.error("レポート削除エラー:", error)
+        toast({
+          title: "エラーが発生しました",
+          description: "レポートの削除に失敗しました",
+          variant: "destructive",
+          duration: 3000,
+        })
+      }
+    }
   }
 
   // 検索フィルタリング
@@ -248,6 +306,34 @@ export default function EventReportsPage() {
       month: "long",
       day: "numeric",
     })
+  }
+
+  // ローディング状態の表示
+  if (isLoading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <h1 className="text-2xl font-bold mb-6">レポート管理</h1>
+        <div className="flex justify-center items-center h-[60vh]">
+          <div className="flex flex-col items-center">
+            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent"></div>
+            <p className="mt-4 text-gray-600">レポートデータを読み込み中...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // エラー状態の表示
+  if (error) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <h1 className="text-2xl font-bold mb-6">レポート管理</h1>
+        <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-6">
+          <p className="text-red-700">{error}</p>
+          <p className="text-sm text-red-600 mt-2">サンプルデータを表示しています</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -389,7 +475,9 @@ export default function EventReportsPage() {
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>キャンセル</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => deleteReport(report.id)}>削除する</AlertDialogAction>
+                            <AlertDialogAction onClick={() => handleDeleteReport(report.id)}>
+                              削除する
+                            </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>

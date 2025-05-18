@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { Calendar, MapPin, Filter, X, Check } from "lucide-react"
+import { Calendar, MapPin, Filter, X, Check, AlertCircle } from "lucide-react"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
@@ -13,124 +13,24 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { CategoryBadge } from "@/components/category-badge"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 // イベントデータの型定義
 interface EventData {
   id: string
   title: string
-  date: string
-  time: string
+  date: string | Date
+  time?: string
   location: string
   image: string
   description: string
-  price: string
-  capacity: string
+  price?: string
+  capacity?: number
   category: string
-  items: string[]
-  color: string
+  items?: string[]
+  color?: string
+  published: boolean
 }
-
-// サンプルイベントデータ
-const eventsData: EventData[] = [
-  {
-    id: "sauna-rental",
-    title: "第7回 スゴイサウナ貸切",
-    date: "2025年5月18日",
-    time: "14:00 - 16:00",
-    location: "スゴイサウナ赤坂店",
-    image: "/sauna1.jpg",
-    description:
-      "毎月恒例！TOTORAS貸切サウナイベント！\n今回で7回目となります！\n「つながりとくつろぎと非日常」\n本来のサウナ施設では体験できない楽しみ方や貸切ならではの特別感、満足感のある時間を提供します！",
-    cautions:
-      "開始時間は14時です。それ以前の入館はできません。受付は14:20締切とします。それ以降の参加はできません。入館された方からシャワー浴びてお待ちください。\nサウナ室以外ではスマートフォンの持ち込みが可能です。水着は無料レンタルがあります。LサイズまたはXLサイズをお選びください。私物は自己管理をお願いします。防水ケースレンタルご希望の方はスタッフにお申し付けください。食べ物の持ち込みは禁止です。タトゥーや刺青がある方もラッシュガードなしでご利用いただけます。貸切終了後は、時間内に完全退店をお願いします。\n館内は完全禁煙です。施設前の路上喫煙もご遠慮ください。\nお車でお越しの際は、周辺の駐車場をご利用ください。無断駐車はご遠慮ください。",
-    price: "2,500円（初回参加2,000円）",
-    capacity: "20名",
-    category: "サウナ",
-    items: ["特に無し"],
-    color: "#ff6b6b",
-  },
-  {
-    id: "board-game",
-    title: "ボードゲーム大会",
-    date: "2025年8月5日",
-    time: "18:30 - 21:30",
-    location: "渋谷・カフェスペース",
-    image: "/board-game-event.png",
-    description:
-      "様々なボードゲームを楽しむイベントです。初心者から上級者まで、誰でも参加できます。スタッフがルール説明をするので、ボードゲーム未経験の方も安心してご参加いただけます。",
-    price: "3,000円（1ドリンク・軽食付き）",
-    capacity: "30名",
-    category: "フットサル",
-    items: [],
-    color: "#4ecdc4",
-  },
-  {
-    id: "halloween-party",
-    title: "ハロウィンパーティー",
-    date: "2025年10月31日",
-    time: "19:00 - 23:00",
-    location: "六本木・イベントホール",
-    image: "/halloween-party.png",
-    description:
-      "今年のハロウィンは、TOTORASの特別パーティーで盛り上がりましょう！仮装コンテストやゲーム、DJによる音楽など、様々なエンターテイメントをご用意しています。",
-    price: "5,500円（2ドリンク・軽食付き）",
-    capacity: "100名",
-    category: "その他",
-    items: ["仮装衣装", "身分証明書（20歳以上）"],
-    color: "#ffd93d",
-  },
-  {
-    id: "christmas-party",
-    title: "クリスマスパーティー",
-    date: "2025年12月23日",
-    time: "18:00 - 22:00",
-    location: "新宿・レンタルスペース",
-    image: "/placeholder-i7cfn.png",
-    description:
-      "クリスマスシーズンを一緒に祝いましょう！美味しい料理、ドリンク、そして楽しいゲームをご用意しています。サンタからのプレゼント交換もあります！",
-    price: "5,000円（フード・ドリンク込み）",
-    capacity: "60名",
-    category: "その他",
-    items: ["プレゼント交換用ギフト（1,000円程度）"],
-    color: "#ff6b6b",
-  },
-  {
-    id: "new-years-countdown",
-    title: "年越しカウントダウン",
-    date: "2025年12月31日",
-    time: "22:00 - 翌2:00",
-    location: "渋谷・クラブスペース",
-    image: "/placeholder-x5sne.png",
-    description:
-      "新年を一緒に迎えましょう！DJによる音楽、特別なカウントダウンイベント、そして新年の乾杯をお楽しみください。",
-    price: "6,000円（2ドリンク付き）",
-    capacity: "80名",
-    category: "その他",
-    items: ["身分証明書（20歳以上）"],
-    color: "#4ecdc4",
-  },
-  {
-    id: "hiking-trip",
-    title: "高尾山ハイキング",
-    date: "2026年1月15日",
-    time: "9:00 - 16:00",
-    location: "東京・高尾山",
-    image: "/placeholder-e0lj7.png",
-    description:
-      "冬の高尾山でリフレッシュしましょう！美しい自然の中でのハイキングと、頂上での絶景をお楽しみください。初心者向けのコースを選定しています。",
-    price: "2,500円（ガイド料込み）",
-    capacity: "20名",
-    category: "サウナ",
-    items: ["ハイキングに適した服装と靴", "水筒", "タオル", "軽食"],
-    color: "#ffd93d",
-  },
-]
-
-// 利用可能なカテゴリと場所のリストを取得
-const categories = [...new Set(eventsData.map((event) => event.category))]
-const locations = [...new Set(eventsData.map((event) => event.location))]
-
-export const revalidate = 3600 // 1時間ごとに再検証
 
 export default function EventsPage() {
   // ページ読み込み時に画面上部にスクロール
@@ -138,18 +38,96 @@ export default function EventsPage() {
     window.scrollTo(0, 0)
   }, [])
 
+  // イベントデータと状態
+  const [events, setEvents] = useState<EventData[]>([])
+  const [filteredEvents, setFilteredEvents] = useState<EventData[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
   // フィルター状態
   const [filters, setFilters] = useState({
     categories: [] as string[],
     locations: [] as string[],
   })
 
-  // フィルター適用後のイベントデータ
-  const [filteredEvents, setFilteredEvents] = useState(eventsData)
+  // 利用可能なカテゴリと場所のリスト
+  const [categories, setCategories] = useState<string[]>([])
+  const [locations, setLocations] = useState<string[]>([])
+
+  // カテゴリごとの色マッピング
+  const categoryColors: Record<string, string> = {
+    サウナ: "#ff6b6b",
+    フットサル: "#4ecdc4",
+    アウトドア: "#ffd93d",
+    料理: "#6c5ce7",
+    その他: "#636e72",
+  }
+
+  // イベントデータをAPIから取得
+  useEffect(() => {
+    const fetchEvents = async () => {
+      setIsLoading(true)
+      setError(null)
+
+      try {
+        // APIからイベント一覧を取得
+        const response = await fetch("/api/events?published=true", {
+          method: "GET",
+          headers: {
+            "Cache-Control": "no-cache",
+          },
+        })
+
+        if (!response.ok) {
+          throw new Error("イベントの取得に失敗しました")
+        }
+
+        let data = await response.json()
+
+        // 日付フォーマットの調整
+        data = data.map((event: any) => ({
+          ...event,
+          date: new Date(event.date),
+          // カテゴリに対応する色を設定（もしカスタム色がなければ）
+          color: event.color || categoryColors[event.category] || "#4ecdc4",
+        }))
+
+        // 公開されているイベントのみをフィルタリング
+        const publishedEvents = data.filter((event: EventData) => event.published)
+
+        setEvents(publishedEvents)
+        setFilteredEvents(publishedEvents)
+
+        // カテゴリと場所のリスト取得
+        const uniqueCategories = [...new Set(publishedEvents.map((event: EventData) => event.category))]
+        const uniqueLocations = [...new Set(publishedEvents.map((event: EventData) => event.location))]
+        setCategories(uniqueCategories)
+        setLocations(uniqueLocations)
+      } catch (error) {
+        console.error("イベントデータ取得エラー:", error)
+        setError("イベントデータの取得に失敗しました。再読み込みしてください。")
+
+        // フォールバックとしてサンプルデータをロード
+        const fallbackEvents = loadFallbackEvents()
+        setEvents(fallbackEvents)
+        setFilteredEvents(fallbackEvents)
+
+        // サンプルデータからカテゴリと場所のリスト取得
+        const uniqueCategories = [...new Set(fallbackEvents.map((event) => event.category))]
+        const uniqueLocations = [...new Set(fallbackEvents.map((event) => event.location))]
+        setCategories(uniqueCategories)
+        setLocations(uniqueLocations)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchEvents()
+  }, [])
 
   // フィルターの適用
   useEffect(() => {
-    let result = [...eventsData]
+    let result = [...events]
 
     // カテゴリでフィルタリング
     if (filters.categories.length > 0) {
@@ -162,7 +140,7 @@ export default function EventsPage() {
     }
 
     setFilteredEvents(result)
-  }, [filters])
+  }, [filters, events])
 
   // フィルターのリセット
   const resetFilters = () => {
@@ -206,6 +184,70 @@ export default function EventsPage() {
     })
   }
 
+  // 日付フォーマット
+  const formatDate = (dateValue: Date | string): string => {
+    const date = new Date(dateValue)
+    return date.toLocaleDateString("ja-JP", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })
+  }
+
+  // フォールバック用のサンプルデータ
+  const loadFallbackEvents = (): EventData[] => {
+    return [
+      {
+        id: "summer-bbq",
+        title: "夏のBBQパーティー",
+        date: "2025-07-20",
+        time: "12:00 - 16:00",
+        location: "東京・代々木公園",
+        image: "/placeholder-eduy5.png",
+        description:
+          "夏の暑い日に、代々木公園で楽しいBBQパーティーを開催します！美味しい食べ物、ドリンク、そして新しい友達との出会いが待っています。初めての方も大歓迎！スタッフが丁寧にサポートするので、お一人での参加も安心です。",
+        price: "4,500円（食材・ドリンク込み）",
+        capacity: 50,
+        category: "サウナ",
+        items: ["動きやすい服装", "日焼け止め", "タオル", "雨天時は雨具"],
+        color: "#ff6b6b",
+        published: true,
+      },
+      {
+        id: "board-game",
+        title: "ボードゲーム大会",
+        date: "2025-08-05",
+        time: "18:30 - 21:30",
+        location: "渋谷・カフェスペース",
+        image: "/board-game-event.png",
+        description:
+          "様々なボードゲームを楽しむイベントです。初心者から上級者まで、誰でも参加できます。スタッフがルール説明をするので、ボードゲーム未経験の方も安心してご参加いただけます。",
+        price: "3,000円（1ドリンク・軽食付き）",
+        capacity: 30,
+        category: "フットサル",
+        items: [],
+        color: "#4ecdc4",
+        published: true,
+      },
+      {
+        id: "halloween-party",
+        title: "ハロウィンパーティー",
+        date: "2025-10-31",
+        time: "19:00 - 23:00",
+        location: "六本木・イベントホール",
+        image: "/halloween-party.png",
+        description:
+          "今年のハロウィンは、TOTORASの特別パーティーで盛り上がりましょう！仮装コンテストやゲーム、DJによる音楽など、様々なエンターテイメントをご用意しています。",
+        price: "5,500円（2ドリンク・軽食付き）",
+        capacity: 100,
+        category: "その他",
+        items: ["仮装衣装", "身分証明書（20歳以上）"],
+        color: "#ffd93d",
+        published: true,
+      },
+    ]
+  }
+
   return (
     <main className="min-h-screen bg-white">
       <Header />
@@ -220,6 +262,14 @@ export default function EventsPage() {
       </div>
 
       <div className="container px-4 mx-auto py-8 md:py-12">
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>エラー</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
           <div>
             <h2 className="text-2xl font-bold">開催予定のイベント</h2>
@@ -301,7 +351,11 @@ export default function EventsPage() {
           </Dialog>
         </div>
 
-        {filteredEvents.length === 0 ? (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#4ecdc4]"></div>
+          </div>
+        ) : filteredEvents.length === 0 ? (
           <div className="text-center py-12">
             <div className="text-gray-400 mb-4">
               <Filter className="h-16 w-16 mx-auto" />
@@ -329,7 +383,10 @@ export default function EventsPage() {
                     loading="lazy"
                     sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
                   />
-                  <div className="absolute inset-0 opacity-30" style={{ backgroundColor: event.color }} />
+                  <div
+                    className="absolute inset-0 opacity-30"
+                    style={{ backgroundColor: event.color || categoryColors[event.category] || "#4ecdc4" }}
+                  />
                   <div className="absolute top-3 right-3">
                     <CategoryBadge category={event.category} />
                   </div>
@@ -338,7 +395,7 @@ export default function EventsPage() {
                   <h3 className="text-xl font-bold mb-3">{event.title}</h3>
                   <div className="flex items-center gap-2 text-gray-600 mb-2">
                     <Calendar className="h-4 w-4" />
-                    <span>{event.date}</span>
+                    <span>{formatDate(event.date)}</span>
                   </div>
                   <div className="flex items-center gap-2 text-gray-600 mb-4">
                     <MapPin className="h-4 w-4" />
@@ -349,14 +406,18 @@ export default function EventsPage() {
                     <Link href={`/events/${event.id}`} className="flex-1">
                       <Button
                         className="w-full"
-                        style={{ backgroundColor: event.color }}
+                        style={{
+                          backgroundColor: event.color || categoryColors[event.category] || "#4ecdc4",
+                        }}
                         onMouseOver={(e) => {
                           const target = e.currentTarget as HTMLButtonElement
-                          target.style.backgroundColor = `${event.color}cc`
+                          const color = event.color || categoryColors[event.category] || "#4ecdc4"
+                          target.style.backgroundColor = `${color}cc`
                         }}
                         onMouseOut={(e) => {
                           const target = e.currentTarget as HTMLButtonElement
-                          target.style.backgroundColor = event.color
+                          const color = event.color || categoryColors[event.category] || "#4ecdc4"
+                          target.style.backgroundColor = color
                         }}
                       >
                         詳細を見る
