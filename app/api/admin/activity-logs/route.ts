@@ -1,38 +1,36 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { ActivityLogService } from "@/lib/activity-log-service"
+import { NextResponse } from "next/server"
+import prisma from "@/lib/prisma"
 
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
-    const searchParams = request.nextUrl.searchParams
-    const limit = Number.parseInt(searchParams.get("limit") || "10", 10)
-    const userId = searchParams.get("userId")
-    const targetType = searchParams.get("targetType")
-    const targetId = searchParams.get("targetId")
+    const { searchParams } = new URL(request.url)
+    const limit = Number.parseInt(searchParams.get("limit") || "50")
+    const page = Number.parseInt(searchParams.get("page") || "1")
+    const skip = (page - 1) * limit
 
-    let logs
+    // アクティビティログの取得
+    const logs = await prisma.activityLog.findMany({
+      orderBy: {
+        timestamp: "desc",
+      },
+      skip,
+      take: limit,
+    })
 
-    if (userId) {
-      logs = await ActivityLogService.getUserLogs(userId, limit)
-    } else if (targetType && targetId) {
-      logs = await ActivityLogService.getTargetLogs(targetType, targetId)
-    } else {
-      logs = await ActivityLogService.getRecentLogs(limit)
-    }
+    // 総件数の取得
+    const total = await prisma.activityLog.count()
 
-    return NextResponse.json({ logs })
+    return NextResponse.json({
+      logs,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit),
+      },
+    })
   } catch (error) {
-    console.error("アクティビティログの取得に失敗しました", error)
+    console.error("アクティビティログ取得エラー:", error)
     return NextResponse.json({ error: "アクティビティログの取得に失敗しました" }, { status: 500 })
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const data = await request.json()
-    const log = await ActivityLogService.logActivity(data)
-    return NextResponse.json({ success: true, log })
-  } catch (error) {
-    console.error("アクティビティログの記録に失敗しました", error)
-    return NextResponse.json({ error: "アクティビティログの記録に失敗しました" }, { status: 500 })
   }
 }

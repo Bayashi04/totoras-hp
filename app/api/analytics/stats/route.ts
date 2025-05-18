@@ -1,52 +1,78 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { analyticsService } from "@/lib/analytics-service"
+import { NextResponse } from "next/server"
+import prisma from "@/lib/prisma"
 
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
-    const searchParams = request.nextUrl.searchParams
-    const type = searchParams.get("type") as "event" | "report" | null
-    const id = searchParams.get("id")
-    const daily = searchParams.get("daily") === "true"
-    const days = Number.parseInt(searchParams.get("days") || "30", 10)
+    const { searchParams } = new URL(request.url)
+    const period = searchParams.get("period") || "7days"
 
-    // 日別アクセス数を取得
-    if (daily && type) {
-      const dailyStats = await analyticsService.getDailyAccessCounts(type, days)
-      return NextResponse.json({ success: true, data: dailyStats })
+    // 期間の計算
+    const now = new Date()
+    const startDate = new Date()
+
+    switch (period) {
+      case "24hours":
+        startDate.setHours(now.getHours() - 24)
+        break
+      case "7days":
+        startDate.setDate(now.getDate() - 7)
+        break
+      case "30days":
+        startDate.setDate(now.getDate() - 30)
+        break
+      case "90days":
+        startDate.setDate(now.getDate() - 90)
+        break
+      default:
+        startDate.setDate(now.getDate() - 7)
     }
 
-    // 特定のアイテムの統計を取得
-    if (id && type) {
-      let stats = null
-      if (type === "event") {
-        stats = await analyticsService.getEventStatsById(id)
-      } else if (type === "report") {
-        stats = await analyticsService.getReportStatsById(id)
-      }
+    // 総ページビュー数
+    const totalPageViews = await prisma.pageView.count({
+      where: {
+        timestamp: {
+          gte: startDate,
+        },
+      },
+    })
 
-      if (!stats) {
-        return NextResponse.json({ error: "Item not found" }, { status: 404 })
-      }
+    // 人気ページ
+    const popularPages = await prisma.pageView.groupBy({
+      by: ["path"],
+      _count: {
+        path: true,
+      },
+      where: {
+        timestamp: {
+          gte: startDate,
+        },
+      },
+      orderBy: {
+        _count: {
+          path: "desc",
+        },
+      },
+      take: 10,
+    })
 
-      return NextResponse.json({ success: true, data: stats })
-    }
+    // 日別アクセス数
+    const dailyStats = await prisma.$queryRaw`
+      SELECT 
+        DATE(timestamp) as date, 
+        COUNT(*) as count 
+      FROM "PageView" 
+      WHERE timestamp >= ${startDate}
+      GROUP BY DATE(timestamp) 
+      ORDER BY date ASC
+    `
 
-    // タイプ別の全統計を取得
-    if (type) {
-      let stats = []
-      if (type === "event") {
-        stats = await analyticsService.getEventStats()
-      } else if (type === "report") {
-        stats = await analyticsService.getReportStats()
-      }
-
-      return NextResponse.json({ success: true, data: stats })
-    }
-
-    // パラメータが不足している場合
-    return NextResponse.json({ error: "Missing required parameters" }, { status: 400 })
+    return NextResponse.json({
+      totalPageViews,
+      popularPages,
+      dailyStats,
+    })
   } catch (error) {
-    console.error("Error fetching analytics stats:", error)
-    return NextResponse.json({ error: "Failed to fetch analytics stats" }, { status: 500 })
+    console.error("統計取得エラー:", error)
+    return NextResponse.json({ error: "統計情報の取得に失敗しました" }, { status: 500 })
   }
 }

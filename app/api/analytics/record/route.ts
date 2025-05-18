@@ -1,42 +1,28 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { analyticsService } from "@/lib/analytics-service"
+import { NextResponse } from "next/server"
+import prisma from "@/lib/prisma"
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
     const data = await request.json()
+    const { path, userAgent, referer } = data
 
-    // 必須フィールドの検証
-    if (!data.type || !data.itemId) {
-      return NextResponse.json({ error: "type and itemId are required" }, { status: 400 })
-    }
+    // IPアドレスの取得（ヘッダーから）
+    const headers = new Headers(request.headers)
+    const ip = headers.get("x-forwarded-for") || headers.get("x-real-ip") || "unknown"
 
-    // アクセス情報を記録
-    const record = await analyticsService.recordAccess({
-      id: crypto.randomUUID(),
-      type: data.type,
-      itemId: data.itemId,
-      userId: data.userId,
-      userAgent: request.headers.get("user-agent") || undefined,
-      referrer: request.headers.get("referer") || undefined,
-      ip: request.headers.get("x-forwarded-for") || undefined,
+    // ページビューを記録
+    const pageView = await prisma.pageView.create({
+      data: {
+        path,
+        userAgent: userAgent || null,
+        referer: referer || null,
+        ip: ip.toString(),
+      },
     })
 
-    // タイトル情報があれば保存
-    if (data.title) {
-      if (data.type === "event") {
-        analyticsService.setEventTitle(data.itemId, data.title)
-      } else if (data.type === "report") {
-        analyticsService.setReportTitle(data.itemId, data.title)
-      }
-    }
-
-    return NextResponse.json({ success: true, recordId: record.id })
+    return NextResponse.json({ success: true, id: pageView.id })
   } catch (error) {
-    console.error("Error recording analytics:", error)
-    return NextResponse.json({ error: "Failed to record analytics" }, { status: 500 })
+    console.error("アクセス記録エラー:", error)
+    return NextResponse.json({ error: "アクセスの記録に失敗しました" }, { status: 500 })
   }
-}
-
-export async function GET() {
-  return NextResponse.json({ error: "Method not allowed" }, { status: 405 })
 }

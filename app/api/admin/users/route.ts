@@ -1,71 +1,79 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { AdminUserService } from "@/lib/admin-user-service"
-import { ActivityLogService } from "@/lib/activity-log-service"
+import { NextResponse } from "next/server"
+import prisma from "@/lib/prisma"
+import * as bcrypt from "bcrypt"
 
 // 管理者ユーザー一覧を取得
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    // 認証チェック（実際の実装ではセッションやJWTなどで認証）
-    // この例では簡略化のため省略
-
-    const users = AdminUserService.getAllUsers().map((user) => {
-      // パスワードを除外
-      const { password, ...userWithoutPassword } = user
-      return userWithoutPassword
+    const users = await prisma.adminUser.findMany({
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
+        // パスワードは除外
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
     })
-
-    return NextResponse.json({ users })
+    return NextResponse.json(users)
   } catch (error) {
-    console.error("管理者ユーザー取得エラー:", error)
-    return NextResponse.json({ error: "管理者ユーザーの取得に失敗しました" }, { status: 500 })
+    console.error("ユーザー取得エラー:", error)
+    return NextResponse.json({ error: "ユーザーの取得に失敗しました" }, { status: 500 })
   }
 }
 
-// 新しい管理者ユーザーを作成
-export async function POST(request: NextRequest) {
+// 新規管理者ユーザーを作成
+export async function POST(request: Request) {
   try {
-    // 認証チェック（実際の実装ではセッションやJWTなどで認証）
-    // この例では簡略化のため省略
-
     const data = await request.json()
-    const { username, email, password, role } = data
 
-    // 入力検証
-    if (!username || !email || !password || !role) {
-      return NextResponse.json({ error: "必須項目が不足しています" }, { status: 400 })
+    // 必須フィールドの検証
+    if (!data.username || !data.password || !data.email) {
+      return NextResponse.json({ error: "ユーザー名、パスワード、メールアドレスは必須です" }, { status: 400 })
     }
 
-    // 既存ユーザーのチェック
-    const existingUser = AdminUserService.getUserByUsernameOrEmail(email)
+    // ユーザー名とメールアドレスの重複チェック
+    const existingUser = await prisma.adminUser.findFirst({
+      where: {
+        OR: [{ username: data.username }, { email: data.email }],
+      },
+    })
+
     if (existingUser) {
-      return NextResponse.json({ error: "このユーザー名またはメールアドレスは既に使用されています" }, { status: 400 })
+      return NextResponse.json({ error: "ユーザー名またはメールアドレスが既に使用されています" }, { status: 400 })
     }
 
-    // 新しいユーザーを作成
-    const newUser = AdminUserService.createUser({
-      username,
-      email,
-      password, // 実際の実装ではパスワードをハッシュ化
-      role,
-      isActive: true,
+    // パスワードのハッシュ化
+    const hashedPassword = await bcrypt.hash(data.password, 10)
+
+    // ユーザーの作成
+    const user = await prisma.adminUser.create({
+      data: {
+        username: data.username,
+        password: hashedPassword,
+        email: data.email,
+        role: data.role || "editor",
+      },
     })
 
-    // パスワードを除外
-    const { password: _, ...userWithoutPassword } = newUser
-
-    // アクティビティログに記録
-    await ActivityLogService.logActivity({
-      username: "管理者", // 実際の実装では現在のユーザー名
-      action: "create",
-      targetType: "user",
-      targetId: newUser.id,
-      targetName: newUser.username,
-      details: `新しい管理者ユーザー「${newUser.username}」を作成しました。権限: ${newUser.role}`,
+    // アクティビティログを記録
+    await prisma.activityLog.create({
+      data: {
+        action: "管理者ユーザー作成",
+        userId: data.createdBy || null,
+        details: `管理者ユーザー「${data.username}」を作成しました`,
+      },
     })
 
-    return NextResponse.json({ user: userWithoutPassword }, { status: 201 })
+    // パスワードを除外して返す
+    const { password, ...userWithoutPassword } = user
+    return NextResponse.json(userWithoutPassword)
   } catch (error) {
-    console.error("管理者ユーザー作成エラー:", error)
-    return NextResponse.json({ error: "管理者ユーザーの作成に失敗しました" }, { status: 500 })
+    console.error("ユーザー作成エラー:", error)
+    return NextResponse.json({ error: "ユーザーの作成に失敗しました" }, { status: 500 })
   }
 }
