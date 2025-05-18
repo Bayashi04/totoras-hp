@@ -83,7 +83,7 @@ export function Footer() {
 
               {/* Instagramリンク */}
               <Link
-                href="https://www.instagram.com/totoras_community"
+                href="https://www.instagram.com/totoras_official"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block h-full"
