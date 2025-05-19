@@ -27,12 +27,19 @@ export async function POST(request: Request) {
 
     console.log(`ユーザーが見つかりました: ${username}`) // デバッグ用
 
-    // パスワードチェック - 平文比較（開発用）
-    if (password === "admin123" && username === "admin") {
-      // 開発環境での簡易ログイン
+    // 開発環境での簡易ログイン（admin/admin123の場合は常に成功）
+    if (username === "admin" && password === "admin123") {
       console.log("開発環境での簡易ログイン成功") // デバッグ用
-
-      // セッションCookieを設定
+      
+      // 複数のCookieを設定（互換性のため）
+      cookies().set({
+        name: "admin_auth_token",
+        value: `user_id_${user.id}_${Date.now()}`,
+        httpOnly: true,
+        path: "/",
+        maxAge: 60 * 60 * 24 * 7, // 1週間
+      })
+      
       cookies().set({
         name: "admin_session",
         value: `user_id=${user.id}`,
@@ -80,7 +87,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "認証処理中にエラーが発生しました" }, { status: 500 })
     }
 
-    // セッションCookieを設定
+    // 複数のCookieを設定（互換性のため）
+    cookies().set({
+      name: "admin_auth_token",
+      value: `user_id_${user.id}_${Date.now()}`,
+      httpOnly: true,
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7, // 1週間
+    })
+    
     cookies().set({
       name: "admin_session",
       value: `user_id=${user.id}`,
